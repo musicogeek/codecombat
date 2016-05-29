@@ -10,6 +10,7 @@ CocoClass = require 'core/CocoClass'
 AudioPlayer = require 'lib/AudioPlayer'
 app = require 'core/application'
 World = require 'lib/world/world'
+utils = require 'core/utils'
 
 # This is an initial stab at unifying loading and setup into a single place which can
 # monitor everything and keep a LoadingScreen visible overall progress.
@@ -31,8 +32,11 @@ module.exports = class LevelLoader extends CocoClass
     @opponentSessionID = options.opponentSessionID
     @team = options.team
     @headless = options.headless
+    @sessionless = options.sessionless
+    @fakeSessionConfig = options.fakeSessionConfig
     @spectateMode = options.spectateMode ? false
     @observing = options.observing
+    @courseID = options.courseID
 
     @worldNecessities = []
     @listenTo @supermodel, 'resource-loaded', @onWorldNecessityLoaded
@@ -55,23 +59,77 @@ module.exports = class LevelLoader extends CocoClass
       @listenToOnce @level, 'sync', @onLevelLoaded
 
   onLevelLoaded: ->
-    @loadSession()
+    if (@courseID and @level.get('type', true) not in ['course', 'course-ladder']) or window.serverConfig.picoCTF
+      # Because we now use original hero levels for both hero and course levels, we fake being a course level in this context.
+      originalGet = @level.get
+      @level.get = ->
+        return 'course' if arguments[0] is 'type'
+        originalGet.apply @, arguments
+    if window.serverConfig.picoCTF
+      @supermodel.addRequestResource(url: '/picoctf/problems', success: (picoCTFProblems) =>
+        @level?.picoCTFProblem = _.find picoCTFProblems, pid: @level.get('picoCTFProblem')
+      ).load()
+    if @sessionless
+      null
+    else if @fakeSessionConfig?
+      @loadFakeSession()
+    else
+      @loadSession()
     @populateLevel()
 
   # Session Loading
 
+  loadFakeSession: ->
+    if @level.get('type', true) in ['hero', 'hero-ladder', 'hero-coop']
+      @sessionDependenciesRegistered = {}
+    initVals =
+      level:
+        original: @level.get('original')
+        majorVersion: @level.get('version').major
+      creator: me.id
+      state:
+        complete: false
+        scripts: {}
+      permissions: [
+        {target: me.id, access: 'owner'}
+        {target: 'public', access: 'write'}
+      ]
+      codeLanguage: @fakeSessionConfig.codeLanguage or me.get('aceConfig')?.language or 'python'
+      _id: 'A Fake Session ID'
+    @session = new LevelSession initVals
+    @session.loaded = true
+    @fakeSessionConfig.callback? @session, @level
+
+    # TODO: set the team if we need to, for multiplayer
+    # TODO: just finish the part where we make the submit button do what is right when we are fake
+    # TODO: anything else to make teacher session-less play make sense when we are fake
+    # TODO: make sure we are not actually calling extra save/patch/put things throwing warnings because we know we are fake and so we shouldn't try to do that
+    for method in ['save', 'patch', 'put']
+      @session[method] = -> console.error "We shouldn't be doing a session.#{method}, since it's a fake session."
+    @session.fake = true
+    @loadDependenciesForSession @session
+
   loadSession: ->
+    if @level.get('type', true) in ['hero', 'hero-ladder', 'hero-coop']
+      @sessionDependenciesRegistered = {}
+
     if @sessionID
       url = "/db/level.session/#{@sessionID}"
+      url += "?interpret=true" if @spectateMode
     else
       url = "/db/level/#{@levelID}/session"
       url += "?team=#{@team}" if @team
+      url += "?course=#{@courseID}" if @courseID
 
     session = new LevelSession().setURL url
+    session.project = ['creator', 'team', 'heroConfig', 'codeLanguage', 'submittedCodeLanguage', 'state'] if @headless
     @sessionResource = @supermodel.loadModel(session, 'level_session', {cache: false})
     @session = @sessionResource.model
     if @opponentSessionID
-      opponentSession = new LevelSession().setURL "/db/level.session/#{@opponentSessionID}"
+      opponentURL = "/db/level.session/#{@opponentSessionID}"
+      opponentURL += "?interpret=true" if @spectateMode or utils.getQueryVariable 'esper'
+      opponentSession = new LevelSession().setURL opponentURL
+      opponentSession.project = session.project if @headless
       @opponentSessionResource = @supermodel.loadModel(opponentSession, 'opponent_session', {cache: false})
       @opponentSession = @opponentSessionResource.model
 
@@ -91,7 +149,15 @@ module.exports = class LevelLoader extends CocoClass
   loadDependenciesForSession: (session) ->
     if me.id isnt session.get 'creator'
       session.patch = session.save = -> console.error "Not saving session, since we didn't create it."
+    else if codeLanguage = utils.getQueryVariable 'codeLanguage'
+      session.set 'codeLanguage', codeLanguage
     @loadCodeLanguagesForSession session
+    if compressed = session.get 'interpret'
+      uncompressed = LZString.decompressFromUTF16 compressed
+      code = session.get 'code'
+      code[if session.get('team') is 'humans' then 'hero-placeholder' else 'hero-placeholder-1'].plan = uncompressed
+      session.set 'code', code
+      session.unset 'interpret'
     if session is @session
       @addSessionBrowserInfo session
       # hero-ladder games require the correct session team in level:loaded
@@ -102,7 +168,6 @@ module.exports = class LevelLoader extends CocoClass
     else if session is @opponentSession
       @consolidateFlagHistory() if @session.loaded
     return unless @level.get('type', true) in ['hero', 'hero-ladder', 'hero-coop']
-    @sessionDependenciesRegistered ?= {}
     heroConfig = session.get('heroConfig')
     heroConfig ?= me.get('heroConfig') if session is @session and not @headless
     heroConfig ?= {}
@@ -151,7 +216,7 @@ module.exports = class LevelLoader extends CocoClass
     browser['platform'] = $.browser.platform if $.browser.platform
     browser['version'] = $.browser.version if $.browser.version
     session.set 'browser', browser
-    session.patch()
+    session.patch() unless session.fake
 
   consolidateFlagHistory: ->
     state = @session.get('state') ? {}
@@ -209,10 +274,6 @@ module.exports = class LevelLoader extends CocoClass
       url = "/db/level/#{obj.original}/version/#{obj.majorVersion}"
       @maybeLoadURL url, Level, 'level'
 
-    unless @headless or @level.get('type', true) in ['hero', 'hero-ladder', 'hero-coop']
-      wizard = ThangType.loadUniversalWizard()
-      @supermodel.loadModel wizard, 'thang'
-
     @worldNecessities = @worldNecessities.concat worldNecessities
 
   loadThangsRequiredByLevelThang: (levelThang) ->
@@ -229,8 +290,11 @@ module.exports = class LevelLoader extends CocoClass
         requiredThangTypes.push itemThangType for itemThangType in _.values (component.config.inventory ? {})
       else if component.config.requiredThangTypes
         requiredThangTypes = requiredThangTypes.concat component.config.requiredThangTypes
-    for thangType in requiredThangTypes
-      url = "/db/thang.type/#{thangType}/version?project=name,components,original,rasterIcon,kind"
+    extantRequiredThangTypes = _.filter requiredThangTypes
+    if extantRequiredThangTypes.length < requiredThangTypes.length
+      console.error "Some Thang had a blank required ThangType in components list:", components
+    for thangType in extantRequiredThangTypes
+      url = "/db/thang.type/#{thangType}/version?project=name,components,original,rasterIcon,kind,prerenderedSpriteSheetData"
       @worldNecessities.push @maybeLoadURL(url, ThangType, 'thang')
 
   onThangNamesLoaded: (thangNames) ->
@@ -260,8 +324,8 @@ module.exports = class LevelLoader extends CocoClass
   checkAllWorldNecessitiesRegisteredAndLoaded: ->
     return false unless _.filter(@worldNecessities).length is 0
     return false unless @thangNamesLoaded
-    return false if @sessionDependenciesRegistered and not @sessionDependenciesRegistered[@session.id]
-    return false if @sessionDependenciesRegistered and @opponentSession and not @sessionDependenciesRegistered[@opponentSession.id]
+    return false if @sessionDependenciesRegistered and not @sessionDependenciesRegistered[@session.id] and not @sessionless
+    return false if @sessionDependenciesRegistered and @opponentSession and not @sessionDependenciesRegistered[@opponentSession.id] and not @sessionless
     true
 
   onWorldNecessitiesLoaded: ->
@@ -322,7 +386,10 @@ module.exports = class LevelLoader extends CocoClass
     resource.markLoaded() if resource.spriteSheetKeys.length is 0
 
   denormalizeSession: ->
-    return if @headless or @sessionDenormalized or @spectateMode
+    return if @headless or @sessionDenormalized or @spectateMode or @sessionless or me.isSessionless()
+    # This is a way (the way?) PUT /db/level.sessions/undefined was happening
+    # See commit c242317d9
+    return if not @session.id
     patch =
       'levelName': @level.get('name')
       'levelID': @level.get('slug') or @level.id
@@ -361,7 +428,7 @@ module.exports = class LevelLoader extends CocoClass
     @grabTeamConfigs()
     @thangTypeTeams = {}
     for thang in @level.get('thangs')
-      if @level.get('type', true) is 'hero' and thang.id is 'Hero Placeholder'
+      if @level.get('type', true) in ['hero', 'course'] and thang.id is 'Hero Placeholder'
         continue  # No team colors for heroes on single-player levels
       for component in thang.components
         if team = component.config?.team
@@ -403,20 +470,23 @@ module.exports = class LevelLoader extends CocoClass
   # Initial Sound Loading
 
   playJingle: ->
-    return if @headless
+    return if @headless or not me.get('volume')
+    volume = 0.5
+    if me.level() < 3
+      volume = 0.25  # Start softly, since they may not be expecting it
     # Apparently the jingle, when it tries to play immediately during all this loading, you can't hear it.
     # Add the timeout to fix this weird behavior.
     f = ->
       jingles = ['ident_1', 'ident_2']
-      AudioPlayer.playInterfaceSound jingles[Math.floor Math.random() * jingles.length]
+      AudioPlayer.playInterfaceSound jingles[Math.floor Math.random() * jingles.length], volume
     setTimeout f, 500
 
   loadAudio: ->
-    return if @headless
+    return if @headless or not me.get('volume')
     AudioPlayer.preloadInterfaceSounds ['victory']
 
   loadLevelSounds: ->
-    return if @headless
+    return if @headless or not me.get('volume')
     scripts = @level.get 'scripts'
     return unless scripts
 

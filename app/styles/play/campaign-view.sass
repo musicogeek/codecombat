@@ -109,6 +109,17 @@ $gameControlMargin: 30px
         border: 3px solid gold
         @include box-shadow(0px 0px 35px skyblue)
 
+      .level-difficulty-banner-text
+        position: absolute
+        bottom: 170%
+        pointer-events: none
+        color: rgb(246, 208, 2)
+        text-shadow: 0px 1px 0px black
+        font-size: 1.8vw
+        z-index: 1
+        width: 100%
+        text-align: center
+
       img.banner
         position: absolute
         bottom: 38%
@@ -222,6 +233,16 @@ $gameControlMargin: 30px
         .level-description
           color: black
 
+          img
+            display: block
+            margin: 0px auto
+            max-width: 100%
+
+        kbd
+          margin: 0 2px 2px 0
+          display: inline-block
+          font-size: 12px
+
         .level-status
           background: transparent url(/images/pages/play/level-info-status-spritesheet.png) no-repeat 0 0
           width: 60px
@@ -247,8 +268,8 @@ $gameControlMargin: 30px
 
           .badge
             position: absolute
-            top: initial
-            left: initial
+            top: auto
+            left: auto
             right: -25px
             bottom: -25px
             font-size: 20px
@@ -259,7 +280,7 @@ $gameControlMargin: 30px
             opacity: 1
             padding: 3px 9px
 
-        &.complete
+        &.shows-leaderboard
           .start-level, .view-solutions
             min-width: calc(50% - 5px)
             display: inline-block
@@ -270,6 +291,9 @@ $gameControlMargin: 30px
 
           .view-solutions
             margin: 10px 5px 0 0
+
+        .course-version
+          text-align: center
 
     .campaign-switch
       color: purple
@@ -307,13 +331,18 @@ $gameControlMargin: 30px
     position: absolute
     right: 1%
     bottom: 1%
-    z-index: 3
+    z-index: 2
 
     .btn
       &:not(:first-child)
         margin-left: $gameControlMargin
+        @media only screen and (max-height: 650px)
+          margin-left: 0
       width: $gameControlSize
       height: $gameControlSize
+
+      @media only screen and (max-height: 650px)
+        @include scale(0.67)
 
       background: url(/images/pages/play/menu_icons.png) no-repeat
 
@@ -336,19 +365,24 @@ $gameControlMargin: 30px
       &:hover
         @include box-shadow(0 0 12px #bbf)
 
-      &:active
+      &:active, &.highlighted
         @include box-shadow(0 0 20px white)
 
-      &.heroes
+      &.items
         background-position: (-1 * $gameControlSize) 0px
-      &.achievements
+      &.heroes
         background-position: (-2 * $gameControlSize) 0px
-      &.account
+      &.achievements
         background-position: (-3 * $gameControlSize) 0px
-      &.settings
-        background-position: (-4 * $gameControlSize) 0px
-      &.gems
+      &.account
+        //background-position: (-4 * $gameControlSize) 0px
         background-position: (-5 * $gameControlSize) 0px
+      &.settings
+        background-position: (-5 * $gameControlSize) 0px
+      &.gems
+        background-position: (-6 * $gameControlSize) 0px
+      &.poll
+        background-position: (-4 * $gameControlSize) 0px
 
     .tooltip
       font-size: 24px
@@ -376,7 +410,7 @@ $gameControlMargin: 30px
         height: 32px
         color: white
 
-      .gem, .level-indicator .player-level-icon, .player-hero-icon
+      .gem, .player-hero-icon
         position: absolute
         top: 1px
 
@@ -388,10 +422,13 @@ $gameControlMargin: 30px
 
       .player-name
         margin-left: 45px
+        
+      a
+        color: white
 
       $spriteSheetSize: 30px
 
-      .player-level-icon, .player-hero-icon
+      .player-hero-icon
         background: transparent url(/images/pages/play/play-spritesheet.png)
         background-size: cover
         background-position: (-2 * $spriteSheetSize) 0
@@ -402,9 +439,9 @@ $gameControlMargin: 30px
 
       .level-indicator
         margin-left: 15px
-        color: #E5C100
+        color: white
         display: inline-block
-        margin: 0p 2px
+        margin: 0 2px
 
       .player-hero-icon
         margin-left: 10px
@@ -427,8 +464,7 @@ $gameControlMargin: 30px
         &.sorcerer
           background-position: (-12 * $spriteSheetSize) 0
 
-
-  #volume-button
+  .campaign-control-button
     position: absolute
     right: 1%
     top: 1%
@@ -439,8 +475,11 @@ $gameControlMargin: 30px
       @include opacity(1.0)
 
     .glyphicon
-      display: none
       font-size: 32px
+
+  #volume-button
+    .glyphicon
+      display: none
 
     &.vol-up .glyphicon.glyphicon-volume-up
       display: inline-block
@@ -454,20 +493,11 @@ $gameControlMargin: 30px
     &.vol-down .glyphicon.glyphicon-volume-down
       display: inline-block
 
-  #back-button
+  #back-button, #clear-storage-button
     position: absolute
     right: 70px
     right: -webkit-calc(1% + 55px)
     right: calc(1% + 55px)
-    top: 1%
-    padding: 3px 8px
-    @include opacity(0.75)
-
-    &:hover
-      @include opacity(1.0)
-
-    .glyphicon
-      font-size: 32px
 
   #campaign-status
     position: absolute
@@ -548,7 +578,7 @@ $gameControlMargin: 30px
           background-position: (-2 * $campaignWidth) 0
         &.mountain
           background-position: (-3 * $campaignWidth) 0
-        &.ice
+        &.glacier
           background-position: (-4 * $campaignWidth) 0
         &.volcano
           background-position: (-5 * $campaignWidth) 0
@@ -564,21 +594,54 @@ $gameControlMargin: 30px
             color: white
             text-shadow: black 2px 2px 0, black -2px -2px 0, black 2px -2px 0, black -2px 2px 0, black 2px 0px 0, black 0px -2px 0, black -2px 0px 0, black 0px 2px 0
 
+          .campaign-locked
+            margin: 32px 0
+
+          .campaign-description
+            margin: 0px 40px
+            background: transparent url(/images/level/popover_border_background.png) no-repeat
+            background-size: 100% 100%
+            padding: 12px
+            color: black
+
           .levels-completed
             font-size: 22px
 
           .play-button
-            margin-top: 30px
+            margin: 15px 0
             min-width: 100px
 
-  #small-nav-logo
+  .small-nav-logo, .picoctf-powered-by
     position: absolute
     top: 1%
     left: 1%
     height: 60px
     z-index: 1
 
+  .picoctf-logo .small-nav-logo
+    height: 90px
+
+  .picoctf-powered-by
+    color: rgb(227, 173, 53)
+    top: calc(1% + 90px)
+    margin: 10px 10px 10px 15px
+
+    img
+      height: 30px
+
+  .ad-container
+    width: 100%
+    height: 90px
+    text-align: center
+
+  .gameplay-container
+    position: absolute
+
 body.ipad #campaign-view
   // iPad only supports up to Kithgard Gates for now.
   .campaign-switch
     display: none
+
+body[lang='ru'] .portals h2
+  font-size: 26px
+

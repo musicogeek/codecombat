@@ -4,6 +4,7 @@ CocoModel = require './CocoModel'
 util = require 'core/utils'
 ThangType = require './ThangType'
 Level = require './Level'
+utils = require 'core/utils'
 
 module.exports = class User extends CocoModel
   @className: 'User'
@@ -12,9 +13,19 @@ module.exports = class User extends CocoModel
   notyErrors: false
 
   isAdmin: -> 'admin' in @get('permissions', true)
+  isArtisan: -> 'artisan' in @get('permissions', true)
   isInGodMode: -> 'godmode' in @get('permissions', true)
   isAnonymous: -> @get('anonymous', true)
   displayName: -> @get('name', true)
+  broadName: ->
+    return '(deleted)' if @get('deleted')
+    name = @get('name')
+    return name if name
+    name = _.filter([@get('firstName'), @get('lastName')]).join(' ')
+    return name if name
+    email = @get('email')
+    return email if email
+    return 'Anoner'
 
   getPhotoURL: (size=80, useJobProfilePhoto=false, useEmployerPageAvatar=false) ->
     photoURL = if useJobProfilePhoto then @get('jobProfile')?.photoURL else null
@@ -33,7 +44,7 @@ module.exports = class User extends CocoModel
     super arguments...
 
   @getUnconflictedName: (name, done) ->
-    $.ajax "/auth/name/#{name}",
+    $.ajax "/auth/name/#{encodeURIComponent(name)}",
       cache: false
       success: (data) -> done data.name
       statusCode: 409: (data) ->
@@ -50,13 +61,32 @@ module.exports = class User extends CocoModel
 
   isEmailSubscriptionEnabled: (name) -> (@get('emails') or {})[name]?.enabled
 
+  isStudent: -> @get('role') is 'student'
+    
+  isTeacher: ->
+    return @get('role') in ['teacher', 'technology coordinator', 'advisor', 'principal', 'superintendent', 'parent']
+    
+  isSessionless: ->
+    # TODO: Fix old users who got mis-tagged as teachers
+    # TODO: Should this just be isTeacher, eventually?
+    Boolean(me.isTeacher() and utils.getQueryVariable('course', false))
+
+  setRole: (role, force=false) ->
+    return if me.isAdmin()
+    oldRole = @get 'role'
+    return if oldRole is role or (oldRole and not force)
+    @set 'role', role
+    @patch()
+    application.tracker?.updateRole()
+    return @get 'role'
+
   a = 5
   b = 100
   c = b
 
   # y = a * ln(1/b * (x + c)) + 1
   @levelFromExp: (xp) ->
-    if xp > 0 then Math.floor(a * Math.log((1/b) * (xp + c))) + 1 else 1
+    if xp > 0 then Math.floor(a * Math.log((1 / b) * (xp + c))) + 1 else 1
 
   # x = b * e^((y-1)/a) - c
   @expForLevel: (level) ->
@@ -116,66 +146,136 @@ module.exports = class User extends CocoModel
     application.tracker.identify announcesActionAudioGroup: @announcesActionAudioGroup unless me.isAdmin()
     @announcesActionAudioGroup
 
-  getGemPromptGroup: ->
-    # A/B Testing whether extra prompt when low gems leads to more gem purchases
-    # TODO: Rename gem purchase event in BuyGemsModal to 'Started gem purchase' after this test is over
-    return @gemPromptGroup if @gemPromptGroup
+  getCampaignAdsGroup: ->
+    return @campaignAdsGroup if @campaignAdsGroup
+    # group = me.get('testGroupNumber') % 2
+    # @campaignAdsGroup = switch group
+    #   when 0 then 'no-ads'
+    #   when 1 then 'leaderboard-ads'
+    @campaignAdsGroup = 'leaderboard-ads'
+    @campaignAdsGroup = 'no-ads' if me.isAdmin()
+    application.tracker.identify campaignAdsGroup: @campaignAdsGroup unless me.isAdmin()
+    @campaignAdsGroup
+
+  getHomepageGroup: ->
+    # Only testing on en-US so localization issues are not a factor
+    return 'home-legacy' unless _.string.startsWith(me.get('preferredLanguage', true) or 'en-US', 'en')
+    return @homepageGroup if @homepageGroup
+    group = parseInt(util.getQueryVariable('variation'))
+    group ?= me.get('testGroupNumber') % 5
+    @homepageGroup = switch group
+      when 0 then 'home-legacy'
+      when 1 then 'home-teachers'
+      when 2 then 'home-legacy-left'
+      when 3 then 'home-dropdowns'
+      when 4 then 'home-play-for-free'
+    application.tracker.identify homepageGroup: @homepageGroup unless me.isAdmin()
+    return @homepageGroup
+
+  # Signs and Portents was receiving updates after test started, and also had a big bug on March 4, so just look at test from March 5 on.
+  # ... and stopped working well until another update on March 10, so maybe March 11+...
+  # ... and another round, and then basically it just isn't completing well, so we pause the test until we can fix it.
+  getFourthLevelGroup: ->
+    return 'forgetful-gemsmith'
+    return @fourthLevelGroup if @fourthLevelGroup
     group = me.get('testGroupNumber') % 8
-    @gemPromptGroup = switch group
-      when 0, 1, 2, 3 then 'prompt'
-      when 4, 5, 6, 7 then 'no-prompt'
-    @gemPromptGroup = 'prompt' if me.isAdmin()
-    application.tracker.identify gemPromptGroup: @gemPromptGroup unless me.isAdmin()
-    @gemPromptGroup
-
-  getForeshadowsLevels: ->
-    return false if $.browser.msie
-    return @foreshadowsLevels if @foreshadowsLevels?
-    group = me.get('testGroupNumber') % 16
-    @foreshadowsLevels = switch group
-      when 0, 1, 2, 3, 4, 5, 6, 7 then true
-      when 8, 9, 10, 11, 12, 13, 14, 15 then false
-    @foreshadowsLevels = true if me.isAdmin()
-    application.tracker.identify foreshadowsLevels: @foreshadowsLevels unless me.isAdmin()
-    @foreshadowsLevels
-
-  getLeaderboardsGroup: ->
-    return @leaderboardsGroup if @leaderboardsGroup?
-    group = me.get('testGroupNumber') % 64
-    if group < 16
-      @leaderboardsGroup = 'always'
-    else if group < 32
-      @leaderboardsGroup = 'early'
-    else if group < 48
-      @leaderboardsGroup = 'late'
-    else
-      @leaderboardsGroup = 'never'
-    @leaderboardsGroup = 'always' if me.isAdmin()
-    application.tracker.identify leaderboardsGroup: @leaderboardsGroup unless me.isAdmin()
-    @leaderboardsGroup
-
-  getShowsPortal: ->
-    return @showsPortal if @showsPortal?
-    group = me.get('testGroupNumber')
-    @showsPortal = if group < 128 then true else false
-    @showsPortal = true if me.isAdmin()
-    application.tracker.identify showsPortal: @showsPortal unless me.isAdmin()
-    @showsPortal
+    @fourthLevelGroup = switch group
+      when 0, 1, 2, 3 then 'signs-and-portents'
+      when 4, 5, 6, 7 then 'forgetful-gemsmith'
+    @fourthLevelGroup = 'signs-and-portents' if me.isAdmin()
+    application.tracker.identify fourthLevelGroup: @fourthLevelGroup unless me.isAdmin()
+    @fourthLevelGroup
 
   getVideoTutorialStylesIndex: (numVideos=0)->
     # A/B Testing video tutorial styles
     # Not a constant number of videos available (e.g. could be 0, 1, 3, or 4 currently)
-    # TODO: Do we need to call identify() still?  trackEvent will have a style property.
     return 0 unless numVideos > 0
     return me.get('testGroupNumber') % numVideos
 
-  isPremium: ->
-    return true if me.isInGodMode()
+  hasSubscription: ->
     return false unless stripe = @get('stripe')
+    return true if stripe.sponsorID
     return true if stripe.subscriptionID
     return true if stripe.free is true
     return true if _.isString(stripe.free) and new Date() < new Date(stripe.free)
+
+  isPremium: ->
+    return true if me.isInGodMode()
+    return true if me.isAdmin()
+    return true if me.hasSubscription()
     return false
+    
+  isEnrolled: ->
+    Boolean(@get('coursePrepaidID'))
+
+  isOnPremiumServer: ->
+    me.get('country') in ['china', 'brazil']
+    
+
+  # Function meant for "me"
+    
+  spy: (user, options={}) ->
+    user = user.id or user # User instance, user ID, email or username
+    options.url = '/auth/spy'
+    options.type = 'POST'
+    options.data ?= {}
+    options.data.user = user
+    @fetch(options)
+    
+  stopSpying: (options={}) ->
+    options.url = '/auth/stop-spying'
+    options.type = 'POST'
+    @fetch(options)
+
+  logout: (options={}) ->
+    options.type = 'POST'
+    options.url = '/auth/logout'
+    FB?.logout?()
+    options.success ?= ->
+      location = _.result(currentView, 'logoutRedirectURL')
+      if location
+        window.location = location
+      else
+        window.location.reload()
+    @fetch(options)
+
+  fetchGPlusUser: (gplusID, options={}) ->
+    options.data ?= {}
+    options.data.gplusID = gplusID
+    options.data.gplusAccessToken = application.gplusHandler.token()
+    @fetch(options)
+    
+  loginGPlusUser: (gplusID, options={}) ->
+    options.url = '/auth/login-gplus'
+    options.type = 'POST'
+    options.data ?= {}
+    options.data.gplusID = gplusID
+    options.data.gplusAccessToken = application.gplusHandler.token()
+    @fetch(options)
+
+  fetchFacebookUser: (facebookID, options={}) ->
+    options.data ?= {}
+    options.data.facebookID = facebookID
+    options.data.facebookAccessToken = application.facebookHandler.token()
+    @fetch(options)
+
+  loginFacebookUser: (facebookID, options={}) ->
+    options.url = '/auth/login-facebook'
+    options.type = 'POST'
+    options.data ?= {}
+    options.data.facebookID = facebookID
+    options.data.facebookAccessToken = application.facebookHandler.token()
+    @fetch(options)
+
+  becomeStudent: (options={}) ->
+    options.url = '/db/user/-/become-student'
+    options.type = 'PUT'
+    @fetch(options)
+
+  remainTeacher: (options={}) ->
+    options.url = '/db/user/-/remain-teacher'
+    options.type = 'PUT'
+    @fetch(options)
 
 tiersByLevel = [-1, 0, 0.05, 0.14, 0.18, 0.32, 0.41, 0.5, 0.64, 0.82, 0.91, 1.04, 1.22, 1.35, 1.48, 1.65, 1.78, 1.96, 2.1, 2.24, 2.38, 2.55, 2.69, 2.86, 3.03, 3.16, 3.29, 3.42, 3.58, 3.74, 3.89, 4.04, 4.19, 4.32, 4.47, 4.64, 4.79, 4.96,
   5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15

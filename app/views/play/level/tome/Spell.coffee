@@ -2,6 +2,7 @@ SpellView = require './SpellView'
 SpellListTabEntryView = require './SpellListTabEntryView'
 {me} = require 'core/auth'
 {createAetherOptions} = require 'lib/aether_utils'
+utils = require 'core/utils'
 
 module.exports = class Spell
   loaded: false
@@ -21,6 +22,7 @@ module.exports = class Spell
     @worker = options.worker
     @levelID = options.levelID
     @levelType = options.level.get('type', true)
+    @level = options.level
 
     p = options.programmableMethod
     @commentI18N = p.i18n
@@ -36,7 +38,7 @@ module.exports = class Spell
     else
       @setLanguage 'javascript'
     @useTranspiledCode = @shouldUseTranspiledCode()
-    console.log 'Spell', @spellKey, 'is using transpiled code (should only happen if it\'s an enemy/spectate writable method).' if @useTranspiledCode
+    #console.log 'Spell', @spellKey, 'is using transpiled code (should only happen if it\'s an enemy/spectate writable method).' if @useTranspiledCode
 
     @source = @originalSource
     @parameters = p.parameters
@@ -47,7 +49,7 @@ module.exports = class Spell
       @source = @originalSource = p.aiSource
     @thangs = {}
     if @canRead()  # We can avoid creating these views if we'll never use them.
-      @view = new SpellView {spell: @, level: options.level, session: @session, otherSession: @otherSession, worker: @worker}
+      @view = new SpellView {spell: @, level: options.level, session: @session, otherSession: @otherSession, worker: @worker, god: options.god, @supermodel}
       @view.render()  # Get it ready and code loaded in advance
       @tabView = new SpellListTabEntryView spell: @, supermodel: @supermodel, codeLanguage: @language, level: options.level
       @tabView.render()
@@ -63,6 +65,8 @@ module.exports = class Spell
   setLanguage: (@language) ->
     #console.log 'setting language to', @language, 'so using original source', @languages[language] ? @languages.javascript
     @originalSource = @languages[@language] ? @languages.javascript
+    @originalSource = @addPicoCTFProblem() if window.serverConfig.picoCTF
+
     # Translate comments chosen spoken language.
     return unless @commentContext
     context = $.extend true, {}, @commentContext
@@ -78,6 +82,25 @@ module.exports = class Spell
       @originalSource = _.template @originalSource, context
     catch e
       console.error "Couldn't create example code template of", @originalSource, "\nwith context", context, "\nError:", e
+
+    if /loop/.test(@originalSource) and @levelType in ['course', 'course-ladder']
+      # Temporary hackery to make it look like we meant while True: in our sample code until we can update everything
+      @originalSource = switch @language
+        when 'python' then @originalSource.replace /loop:/, 'while True:'
+        when 'javascript' then @originalSource.replace /loop {/, 'while (true) {'
+        when 'clojure' then @originalSource.replace /dotimes \[n 1000\]/, '(while true'
+        when 'lua' then @originalSource.replace /loop\n/, 'while true then\n'
+        when 'coffeescript' then @originalSource
+        when 'io' then @originalSource.replace /loop\n/, 'while true,\n'
+        else @originalSource
+
+  addPicoCTFProblem: ->
+    return @originalSource unless problem = @level.picoCTFProblem
+    description = """
+      -- #{problem.name} --
+      #{problem.description}
+    """.replace /<p>(.*?)<\/p>/gi, '$1'
+    ("// #{line}" for line in description.split('\n')).join('\n') + '\n' + @originalSource
 
   addThang: (thang) ->
     if @thangs[thang.id]
@@ -148,12 +171,18 @@ module.exports = class Spell
       cb(aether.hasChangedSignificantly((newSource ? @originalSource), (currentSource ? @source), true, true))
 
   createAether: (thang) ->
-    aceConfig = me.get('aceConfig') ? {}
     writable = @permissions.readwrite.length > 0
     skipProtectAPI = @skipProtectAPI or not writable
     problemContext = @createProblemContext thang
-    includeFlow = (@levelType in ['hero', 'hero-ladder', 'hero-coop']) and not skipProtectAPI
-    aetherOptions = createAetherOptions functionName: @name, codeLanguage: @language, functionParameters: @parameters, skipProtectAPI: skipProtectAPI, includeFlow: includeFlow, problemContext: problemContext
+    includeFlow = (@levelType in ['hero', 'hero-ladder', 'hero-coop', 'course', 'course-ladder']) and not skipProtectAPI
+    aetherOptions = createAetherOptions
+      functionName: @name
+      codeLanguage: @language
+      functionParameters: @parameters
+      skipProtectAPI: skipProtectAPI
+      includeFlow: includeFlow
+      problemContext: problemContext
+      useInterpreter: if @spectateView then true else undefined
     aether = new Aether aetherOptions
     if @worker
       workerMessage =
@@ -187,10 +216,10 @@ module.exports = class Spell
 
   shouldUseTranspiledCode: ->
     # Determine whether this code has already been transpiled, or whether it's raw source needing transpilation.
-    return true if @spectateView  # Use transpiled code for both teams if we're just spectating.
+    return false if @spectateView or utils.getQueryVariable 'esper'  # Don't use transpiled code with interpreter
     return true if @isEnemySpell()  # Use transpiled for enemy spells.
     # Players without permissions can't view the raw code.
-    return false if @observing and @levelType is 'hero'
+    return false if @observing and @levelType in ['hero', 'course']
     return true if @session.get('creator') isnt me.id and not (me.isAdmin() or 'employer' in me.get('permissions', true))
     false
 

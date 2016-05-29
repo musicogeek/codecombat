@@ -3,7 +3,7 @@ template = require 'templates/play/modal/play-items-modal'
 buyGemsPromptTemplate = require 'templates/play/modal/buy-gems-prompt'
 ItemDetailsView = require './ItemDetailsView'
 BuyGemsModal = require 'views/play/modal/BuyGemsModal'
-AuthModal = require 'views/core/AuthModal'
+CreateAccountModal = require 'views/core/CreateAccountModal'
 
 CocoCollection = require 'collections/CocoCollection'
 ThangType = require 'models/ThangType'
@@ -80,6 +80,7 @@ module.exports = class PlayItemsModal extends ModalView
     itemFetcher.skip = 0
     itemFetcher.fetch({data: {skip: 0, limit: PAGE_SIZE}})
     @listenTo itemFetcher, 'sync', @onItemsFetched
+    @stopListening @supermodel, 'loaded-all'
     @supermodel.loadCollection(itemFetcher, 'items')
     @idToItem = {}
 
@@ -102,6 +103,10 @@ module.exports = class PlayItemsModal extends ModalView
       model.comingSoon = not model.getFrontFacingStats().props.length and not _.size(model.getFrontFacingStats().stats) and not model.owned  # Temp: while there are placeholder items
       @idToItem[model.id] = model
 
+    if itemFetcher.skip isnt 0
+      # Make sure we render the newly fetched items, except the first time (when it happens automatically).
+      @render()
+
     if needMore
       itemFetcher.skip += PAGE_SIZE
       itemFetcher.fetch({data: {skip: itemFetcher.skip, limit: PAGE_SIZE}})
@@ -117,7 +122,7 @@ module.exports = class PlayItemsModal extends ModalView
   afterRender: ->
     super()
     return unless @supermodel.finished()
-    Backbone.Mediator.publish 'audio-player:play-sound', trigger: 'game-menu-open', volume: 1
+    @playSound 'game-menu-open'
     @$el.find('.nano:visible').nanoScroller({alwaysVisible: true})
     @itemDetailsView = new ItemDetailsView()
     @insertSubView(@itemDetailsView)
@@ -125,10 +130,11 @@ module.exports = class PlayItemsModal extends ModalView
     earnedLevels = me.get('earned')?.levels or []
     if Level.levels['defense-of-plainswood'] not in earnedLevels
       @$el.find('#misc-tab').hide()
+      @$el.find('#hero-type-select #warrior').click()  # Start on warrior tab, if low level.
 
   onHidden: ->
     super()
-    Backbone.Mediator.publish 'audio-player:play-sound', trigger: 'game-menu-close', volume: 1
+    @playSound 'game-menu-close'
 
 
   #- Click events
@@ -207,14 +213,10 @@ module.exports = class PlayItemsModal extends ModalView
         button.removeClass('confirm').text($.i18n.t('play.unlock')) if e.target isnt button[0]
 
   askToSignUp: ->
-    authModal = new AuthModal supermodel: @supermodel
-    authModal.mode = 'signup'
-    return @openModalView authModal
+    createAccountModal = new CreateAccountModal supermodel: @supermodel
+    return @openModalView createAccountModal
 
   askToBuyGems: (unlockButton) ->
-    if me.getGemPromptGroup() is 'no-prompt'
-      return @askToSignUp() if me.get('anonymous')
-      return @openModalView new BuyGemsModal()
     @$el.find('.unlock-button').popover 'destroy'
     popoverTemplate = buyGemsPromptTemplate {}
     unlockButton.popover(

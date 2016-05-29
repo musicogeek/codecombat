@@ -38,7 +38,7 @@ module.exports = class LevelDialogueView extends CocoView
     $('body').addClass('dialogue-view-active')
     @setMessage e.message, e.mood, e.responses
 
-    window.tracker?.trackEvent 'Heard Sprite', {message: e.message, label: e.message, ls: @sessionID}, ['Google Analytics']
+    window.tracker?.trackEvent 'Heard Sprite', {message: e.message, label: e.message, ls: @sessionID}
 
   onDialogueSoundCompleted: ->
     @$el.removeClass 'speaking'
@@ -66,14 +66,17 @@ module.exports = class LevelDialogueView extends CocoView
         group.append(button)
         response.button = $('button:last', group)
     else
-      s = $.i18n.t('play_level.hud_continue_short', defaultValue: 'Continue')
+      s = $.i18n.t('common.continue', defaultValue: 'Continue')
       sk = $.i18n.t('play_level.skip_tutorial', defaultValue: 'skip: esc')
-      if not @escapePressed
+      if not @escapePressed and not @isFullScreen()
         group.append('<span class="hud-hint">' + sk + '</span>')
       group.append($('<button class="btn btn-small banner with-dot">' + s + ' <div class="dot"></div></button>'))
       @lastResponses = null
     @animator = new DialogueAnimator(message, @bubble)
     @messageInterval = setInterval(@addMoreMessage, 1000 / 30)  # 30 FPS
+
+  isFullScreen: ->
+    document.fullScreen || document.mozFullScreen || document.webkitIsFullScreen
 
   addMoreMessage: =>
     if @animator.done()

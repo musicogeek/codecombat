@@ -53,7 +53,9 @@ _.extend UserSchema.properties,
   iosIdentifierForVendor: c.shortString({format: 'hidden'})
   firstName: c.shortString({title: 'First Name'})
   lastName: c.shortString({title: 'Last Name'})
-  gender: {type: 'string', 'enum': ['male', 'female']}
+  gender: {type: 'string'} # , 'enum': ['male', 'female', 'secret', 'trans', 'other']
+  # NOTE: ageRange enum changed on 4/27/16 from ['0-13', '14-17', '18-24', '25-34', '35-44', '45-100']
+  ageRange: {type: 'string'}  # 'enum': ['13-15', '16-17', '18-24', '25-34', '35-44', '45-100']
   password: {type: 'string', maxLength: 256, minLength: 2, title: 'Password'}
   passwordReset: {type: 'string'}
   photoURL: {type: 'string', format: 'image-file', title: 'Profile Picture', description: 'Upload a 256x256px or larger image to serve as your profile picture.'}
@@ -62,10 +64,10 @@ _.extend UserSchema.properties,
   githubID: {type: 'integer', title: 'GitHub ID'}
   gplusID: c.shortString({title: 'G+ ID'})
 
-  wizardColor1: c.pct({title: 'Wizard Clothes Color'})
+  wizardColor1: c.pct({title: 'Wizard Clothes Color'})  # No longer used
   volume: c.pct({title: 'Volume'})
   music: { type: 'boolean' }
-  autocastDelay: { type: 'integer' }
+  autocastDelay: { type: 'integer' }  # No longer used
   lastLevel: { type: 'string' }
   heroConfig: c.HeroConfigSchema
 
@@ -78,6 +80,7 @@ _.extend UserSchema.properties,
     archmageNews: {$ref: '#/definitions/emailSubscription'}
     artisanNews: {$ref: '#/definitions/emailSubscription'}
     diplomatNews: {$ref: '#/definitions/emailSubscription'}
+    teacherNews: {$ref: '#/definitions/emailSubscription'}
     scribeNews: {$ref: '#/definitions/emailSubscription'}
 
     # notifications
@@ -116,7 +119,7 @@ _.extend UserSchema.properties,
     colorConfig: c.object {additionalProperties: c.colorConfig()}
 
   aceConfig: c.object { default: { language: 'python', keyBindings: 'default', invisibles: false, indentGuides: false, behaviors: false, liveCompletion: true }},
-    language: {type: 'string', 'enum': ['python', 'javascript', 'coffeescript', 'clojure', 'lua', 'io']}
+    language: {type: 'string', 'enum': ['python', 'javascript', 'coffeescript', 'clojure', 'lua', 'java', 'io']}
     keyBindings: {type: 'string', 'enum': ['default', 'vim', 'emacs']}
     invisibles: {type: 'boolean' }
     indentGuides: {type: 'boolean' }
@@ -126,6 +129,7 @@ _.extend UserSchema.properties,
   simulatedBy: {type: 'integer', minimum: 0 }
   simulatedFor: {type: 'integer', minimum: 0 }
 
+  # Deprecated. TODO: Figure out how to remove.
   jobProfile: c.object {title: 'Job Profile', default: { active: false, lookingFor: 'Full-time', jobTitle: 'Software Developer', city: 'Defaultsville, CA', country: 'USA', skills: ['javascript'], shortDescription: 'Programmer seeking to build great software.', longDescription: '* I write great code.\n* You need great code?\n* Great!' }},
     lookingFor: {title: 'Looking For', type: 'string', enum: ['Full-time', 'Part-time', 'Remote', 'Contracting', 'Internship'], description: 'What kind of developer position do you want?'}
     jobTitle: {type: 'string', maxLength: 50, title: 'Desired Job Title', description: 'What role are you looking for? Ex.: "Full Stack Engineer", "Front-End Developer", "iOS Developer"' }
@@ -273,21 +277,59 @@ _.extend UserSchema.properties,
     levelSystemMiscPatches: c.int()
     thangTypeTranslationPatches: c.int()
     thangTypeMiscPatches: c.int()
+    achievementTranslationPatches: c.int()
+    achievementMiscPatches: c.int()
+    pollTranslationPatches: c.int()
+    pollMiscPatches: c.int()
+    campaignTranslationPatches: c.int()
+    campaignMiscPatches: c.int()
+    concepts: {type: 'object', additionalProperties: c.int(), description: 'Number of levels completed using each programming concept.'}
 
   earned: c.RewardSchema 'earned by achievements'
   purchased: c.RewardSchema 'purchased with gems or money'
+  deleted: {type: 'boolean'}
+  dateDeleted: c.date()
   spent: {type: 'number'}
   stripeCustomerID: { type: 'string' } # TODO: Migrate away from this property
 
   stripe: c.object {}, {
     customerID: { type: 'string' }
-    planID: { enum: ['basic'] }
-    subscriptionID: { type: 'string' }
+    planID: { enum: ['basic'], description: 'Determines if a user has or wants to subscribe' }
+    subscriptionID: { type: 'string', description: 'Determines if a user is subscribed' }
     token: { type: 'string' }
     couponID: { type: 'string' }
-    discountID: { type: 'string' }
-    free: { type: ['boolean', 'string'], format: 'date-time' }
+    free: { type: ['boolean', 'string'], format: 'date-time', description: 'Type string is subscription end date' }
+    prepaidCode: c.shortString description: 'Prepaid code to apply to sub purchase'
+
+    # Sponsored subscriptions
+    subscribeEmails: c.array { description: 'Input for subscribing other users' }, c.shortString()
+    unsubscribeEmail: { type: 'string', description: 'Input for unsubscribing a sponsored user' }
+    recipients: c.array { title: 'Recipient subscriptions owned by this user' },
+      c.object { required: ['userID', 'subscriptionID'] },
+        userID: c.objectId { description: 'User ID of recipient' }
+        subscriptionID: { type: 'string' }
+        couponID: { type: 'string' }
+    sponsorID: c.objectId { description: "User ID that owns this user's subscription" }
+    sponsorSubscriptionID: { type: 'string', description: 'Sponsor aggregate subscription used to pay for all recipient subs' }
   }
+
+  siteref: { type: 'string' }
+  referrer: { type: 'string' }
+  chinaVersion: { type: 'boolean' }  # Old, can be removed after we make sure it's deleted from all users
+  country: { type: 'string', enum: ['brazil', 'china'] }  # New, supports multiple countries for different versions--only set for specific countries where we have premium servers right now
+
+  clans: c.array {}, c.objectId()
+  courseInstances: c.array {}, c.objectId()
+  currentCourse: c.object {}, {  # Old, can be removed after we deploy and delete it from all users
+    courseID: c.objectId({})
+    courseInstanceID: c.objectId({})
+  }
+  coursePrepaidID: c.objectId({
+    description: 'Prepaid which has paid for this user\'s course access'
+  })
+  schoolName: {type: 'string'}
+  role: {type: 'string', enum: ["God", "advisor", "parent", "principal", "student", "superintendent", "teacher", "technology coordinator"]}
+  birthday: c.stringDate({title: "Birthday"})
 
 c.extendBasicProperties UserSchema, 'user'
 

@@ -1,119 +1,60 @@
 extends /templates/base
 
 block content
+  .container-fluid
+    .row
+      .col-md-6
+        .pull-left
+          a(href="/") <- to main CodeCombat website
+      .col-md-6
+        .pull-right
+          a(href="/hoc") Students, click here!
+    .row
+      .col-md-12
+        br
+        .text-center
+          .title 
+            strong.spr Teachers
+            span - try CodeCombat Courses in your classroom!
+    .row
+      .col-md-2
+      .col-md-8
+        p
+          div In just one hour, students will learn:
+          ul
+            li basic Python syntax
+            li arguments
+            li strings
+            li while loops
+            li variables
+  br
 
-  p.row
+  if me.isAnonymous()
+    .text-center
+      button.btn.btn-lg.btn-success.uppercase.btn-create-account Create Teacher account
+    .text-center
+      button.btn.btn-lg.btn-primary.uppercase.btn-login-account Log into Teacher Account
 
-    .span5
+  br
+  br
+  h2.text-center Frequently Asked Questions
 
-      h2(data-i18n="teachers.title") CodeCombat for Teachers
+  .container-fluid
+    .row
+      .col-md-2
+      .col-md-8
+        .faq-question(data-i18n="teachers.who_for_title")
+        p(data-i18n="teachers.who_for_1")
+        p(data-i18n="teachers.who_for_2")
 
-      h3(data-i18n="teachers.preparation_title") Preparation
+        .faq-question Does it cost anything to play CodeCombat?
+        p
+          span.spr The first course “Introduction to Computer Science” is completely free, and generally takes students an hour to complete. Students can be enrolled in additional courses spanning an entire semester's worth of topics with per-student pricing. We offer
+          a(href='/teachers/freetrial') free trials
+          span.spl for teachers who are interested in using CodeCombat Courses.
 
-      p
-        span.spr(data-i18n="teachers.preparation_1")
-          | CodeCombat is free to play for the core level progression 
-          | and does not require students to sign up. We encourage teachers to
-        a(href="/play", data-i18n="teachers.preparation_play_campaign") play through the campaign
-        span.spl(data-i18n="teachers.preparation_2")
-          | to try it out, but the only thing you absolutely need to do 
-          | to be ready is ensure students have access to a computer.
-
-      p(data-i18n="teachers.preparation_3")
-        | It is not necessary for teachers to be comfortable with computer 
-        | science concepts for students to have fun learning with CodeCombat.
-
-      h3(data-i18n="teachers.violent_title")
-        | Is it violent?
-
-      p
-        span.spr(data-i18n="teachers.violent_1")
-          | We get this from teachers a lot due to our name. Although CodeCombat 
-          | does contain cartoon violence, there is nothing graphic in either the 
-          | visuals or language.
-        span(data-i18n="teachers.violent_2")
-          | If you are comfortable having your students play Angry Birds, you will 
-          | be comfortable with CodeCombat.
-
-      h3(data-i18n="teachers.for_girls_title")
-        | Is it for girls?
-
-      p(data-i18n="teachers.for_girls_1")
-        | There are three game modes in CodeCombat: building, puzzles, and combat. 
-        | We have intentionally designed each to appeal to both boys and girls and 
-        | think that the building and puzzle levels especially differentiate the game 
-        | from violent triple A titles that repel female players.
-
-      h3(data-i18n="teachers.what_cover_title")
-        | What do we cover?
-
-      p(data-i18n="teachers.what_cover_1")
-        | There are 20 levels in the Hour of Code tutorial that teach and 
-        | reinforce 6 specific computer science concepts:
-
-        ol
-          li
-            strong.spr(data-i18n="teachers.what_cover_notation_1") Formal notation
-            span(data-i18n="teachers.what_cover_notation_2")
-              | - builds an understanding of the importance of syntax in programming.
-          li
-            strong.spr(data-i18n="teachers.what_cover_methods_1") Calling methods
-            span(data-i18n="teachers.what_cover_methods_2")
-              | - familiarizes students with the syntax of object-oriented method calls.
-          li
-            strong.spr(data-i18n="teachers.what_cover_parameters_1") Parameters
-            span(data-i18n="teachers.what_cover_parameters_2")
-              | - trains how to pass parameters to functions.
-          li
-            strong.spr(data-i18n="teachers.what_cover_strings_1") Strings
-            span(data-i18n="teachers.what_cover_strings_2")
-              | - teaches students about string notation and passing strings as parameters.
-          li
-            strong.spr(data-i18n="teachers.what_cover_loops_1") Loops
-            span(data-i18n="teachers.what_cover_loops_2")
-              | - develops the abstraction of designing short programs with loops.
-          li
-            strong.spr(data-i18n="teachers.what_cover_variables_1") Variables
-            span(data-i18n="teachers.what_cover_variables_2")
-              | - adds the skill of referencing values that change over time.
-
-      p(data-i18n="teachers.what_cover_2")
-        | Students may continue past level 20, depending on their 
-        | speed and interest, to learn two additional concepts in later levels:
-        ol
-          li
-            strong.spr(data-i18n="teachers.what_cover_logic_1") Conditional logic
-            span(data-i18n="teachers.what_cover_logic_2")
-              | - when and how to use if/else to control in-game outcomes.
-          li
-            strong.spr(data-i18n="teachers.what_cover_input_1") Handling player input
-            span(data-i18n="teachers.what_cover_input_2")
-              | - responding to input events to create a user interface.
-
-
-      h3(data-i18n="teachers.sys_requirements_title") System Requirements
-
-      p(data-i18n="teachers.sys_requirements_1") 
-        | Because CodeCombat is a game, it is more intensive for computers 
-        | to run smoothly than video or written tutorials. We have optimized 
-        | it to run quickly on all modern browsers and on older machines so 
-        | that everyone can play. That said, here are our suggestions for getting 
-        | the most out of your Hour of Code experience:
-
-      ul
-        li
-          strong.spr(data-i18n="teachers.sys_requirements_2") Use newer versions of Chrome or Firefox.
-          span(data-i18n="teachers.sys_requirements_3")
-            | Although CodeCombat will work on browsers as old as IE9, the 
-            | performance is not as good. Chrome is best.
-        li
-          strong.spr(data-i18n="teachers.sys_requirements_4") Use newer computers.
-          span(data-i18n="teachers.sys_requirements_5")
-            | Older computers, Chromebooks, and netbooks tend to have very few 
-            | system resources, which makes for a less enjoyable experience. 
-            | At least 2GB of RAM is required.
-        li
-          strong.spr(data-i18n="teachers.sys_requirements_6") Allow players to wear headphones/earbuds to hear the audio.
-          span(data-i18n="teachers.sys_requirements_7")
-            | We help players learn through voiceover and sound effects, which 
-            | will make classrooms noisy and distracting.
+        .faq-question(data-i18n="teachers.more_info_title")
+        p
+          span.spr(data-i18n="teachers.more_info_1")
+          a(href='http://discourse.codecombat.com/c/teachers', data-i18n="teachers.more_info_2")
+          span.spl(data-i18n="teachers.more_info_3")

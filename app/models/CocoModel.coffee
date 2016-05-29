@@ -1,5 +1,6 @@
 storage = require 'core/storage'
 deltasLib = require 'core/deltas'
+locale = require 'locale/locale'
 
 class CocoModel extends Backbone.Model
   idAttribute: '_id'
@@ -20,12 +21,18 @@ class CocoModel extends Backbone.Model
     @on 'add', @onLoaded, @
     @saveBackup = _.debounce(@saveBackup, 500)
     @usesVersions = @schema()?.properties?.version?
+    if window.application?.testing
+      @fakeRequests = []
+      @on 'request', -> @fakeRequests.push jasmine.Ajax.requests.mostRecent()
+
+  created: -> new Date(parseInt(@id.substring(0, 8), 16) * 1000)
 
   backupKey: ->
     if @usesVersions then @id else @id  # + ':' + @attributes.__v  # TODO: doesn't work because __v doesn't actually increment. #2061
     # if fixed, RevertModal will also need the fix
 
   setProjection: (project) ->
+    # TODO: ends up getting done twice, since the URL is modified and the @project is modified. So don't do this, just set project directly... (?)
     return if project is @project
     url = @getURL()
     url += '&project=' unless /project=/.test url
@@ -49,7 +56,10 @@ class CocoModel extends Backbone.Model
     @loading = false
     @jqxhr = null
     if jqxhr.status is 402
-      Backbone.Mediator.publish 'level:subscription-required', {}
+      if _.contains(jqxhr.responseText, 'be in a course')
+        Backbone.Mediator.publish 'level:course-membership-required', {}
+      else
+        Backbone.Mediator.publish 'level:subscription-required', {}
 
   onLoaded: ->
     @loaded = true
@@ -145,7 +155,10 @@ class CocoModel extends Backbone.Model
           return
         else
           msg = $.i18n.t 'loading_error.connection_failure', defaultValue: 'Connection failed.'
-          noty text: msg, layout: 'center', type: 'error', killer: true, timeout: 3000
+          try
+            noty text: msg, layout: 'center', type: 'error', killer: true, timeout: 3000
+          catch notyError
+            console.warn "Couldn't even show noty error for", error, "because", notyError
           return _.delay((f = => @save(attrs, originalOptions)), 3000)
       error(@, res) if error
       return unless @notyErrors
@@ -233,6 +246,7 @@ class CocoModel extends Backbone.Model
     # actor is a User object
     actor ?= me
     return true if actor.isAdmin()
+    return true if actor.isArtisan() and @editableByArtisans
     for permission in (@get('permissions', true) ? [])
       if permission.target is 'public' or actor.get('_id') is permission.target
         return true if permission.access in ['owner', 'read']
@@ -243,6 +257,7 @@ class CocoModel extends Backbone.Model
     # actor is a User object
     actor ?= me
     return true if actor.isAdmin()
+    return true if actor.isArtisan() and @editableByArtisans
     for permission in (@get('permissions', true) ? [])
       if permission.target is 'public' or actor.get('_id') is permission.target
         return true if permission.access in ['owner', 'write']
@@ -394,12 +409,19 @@ class CocoModel extends Backbone.Model
         # use it to determine what properties actually need to be translated
         props = workingSchema.props or []
         props = (prop for prop in props when parentData[prop])
+        #unless props.length
+        #  console.log 'props is', props, 'path is', path, 'data is', data, 'parentData is', parentData, 'workingSchema is', workingSchema
+        #  langCodeArrays.push _.without _.keys(locale), 'update'  # Every language has covered a path with no properties to be translated.
+        #  return
+
+        return if 'additionalProperties' of i18n  # Workaround for #2630: Programmable is weird
 
         # get a list of lang codes where its object has keys for every prop to be translated
         coverage = _.filter(_.keys(i18n), (langCode) ->
           translations = i18n[langCode]
           _.all((translations[prop] for prop in props))
         )
+        #console.log 'got coverage', coverage, 'for', path, props, workingSchema, parentData
         langCodeArrays.push coverage
     )
 
@@ -408,5 +430,27 @@ class CocoModel extends Backbone.Model
     overallCoverage = _.intersection(langCodeArrays...)
     @set('i18nCoverage', overallCoverage)
 
+  saveNewMinorVersion: (attrs, options={}) ->
+    options.url = @url() + '/new-version'
+    options.type = 'POST'
+    return @save(attrs, options)
+
+  saveNewMajorVersion: (attrs, options={}) ->
+    attrs = attrs or _.omit(@attributes, 'version')
+    options.url = @url() + '/new-version'
+    options.type = 'POST'
+    options.patch = true # do not let version get sent along
+    return @save(attrs, options)
+
+  fetchPatchesWithStatus: (status='pending', options={}) ->
+    Patches = require '../collections/Patches'
+    patches = new Patches()
+    options.data ?= {}
+    options.data.status = status
+    options.url = @urlRoot + '/' + (@get('original') or @id) + '/patches'
+    patches.fetch(options)
+    return patches
+    
+  stringify: -> return JSON.stringify(@toJSON())
 
 module.exports = CocoModel

@@ -1,11 +1,15 @@
 c = require './../schemas'
 
-CampaignSchema = c.object()
+CampaignSchema = c.object
+  default:
+    type: 'hero'
 c.extendNamedProperties CampaignSchema  # name first
 
 _.extend CampaignSchema.properties, {
-  i18n: {type: 'object', title: 'i18n', format: 'i18n', props: ['name', 'fullName']}
+  i18n: {type: 'object', title: 'i18n', format: 'i18n', props: ['name', 'fullName', 'description']}
   fullName: { type: 'string', title: 'Full Name', description: 'Ex.: "Kithgard Dungeon"' }
+  description: { type: 'string', format: 'string', description: 'How long it takes and what players learn.' }
+  type: c.shortString(title: 'Type', description: 'What kind of campaign this is.', 'enum': ['hero', 'course'])
 
   ambientSound: c.object {},
     mp3: { type: 'string', format: 'sound-file' }
@@ -41,6 +45,7 @@ _.extend CampaignSchema.properties, {
       showIfUnlocked: { type: 'string', links: [{rel: 'db', href: '/db/level/{($)}/version'}], format: 'latest-version-original-reference' }
     }
   }}
+  levelsUpdated: c.date()
 
   levels: { type: 'object', format: 'levels', additionalProperties: {
     title: 'Level'
@@ -55,13 +60,14 @@ _.extend CampaignSchema.properties, {
       description: { type: 'string', format: 'hidden' }
       i18n: { type: 'object', format: 'hidden' }
       requiresSubscription: { type: 'boolean' }
-      type: {'enum': ['campaign', 'ladder', 'ladder-tutorial', 'hero', 'hero-ladder', 'hero-coop']}
+      replayable: { type: 'boolean' }
+      type: {'enum': ['ladder', 'ladder-tutorial', 'hero', 'hero-ladder', 'hero-coop', 'course', 'course-ladder']}
       slug: { type: 'string', format: 'hidden' }
       original: { type: 'string', format: 'hidden' }
       adventurer: { type: 'boolean' }
       practice: { type: 'boolean' }
       adminOnly: { type: 'boolean' }
-      disableSpaces: { type: 'boolean' }
+      disableSpaces: { type: ['boolean','number'] }
       hidesSubmitUntilRun: { type: 'boolean' }
       hidesPlayButton: { type: 'boolean' }
       hidesRunShortcut: { type: 'boolean' }
@@ -70,7 +76,7 @@ _.extend CampaignSchema.properties, {
       hidesCodeToolbar: { type: 'boolean' }
       hidesRealTimePlayback: { type: 'boolean' }
       backspaceThrottle: { type: 'boolean' }
-      lockDefaultCode: { type: 'boolean' }
+      lockDefaultCode: { type: ['boolean','number'] }
       moveRightLoopSnippet: { type: 'boolean' }
       realTimeSpeedFactor: { type: 'number' }
       autocompleteFontSizePx: { type: 'number' }
@@ -111,8 +117,14 @@ _.extend CampaignSchema.properties, {
       }}
 
       campaign: c.shortString title: 'Campaign', description: 'Which campaign this level is part of (like "desert").', format: 'hidden'  # Automatically set by campaign editor.
+      campaignIndex: c.int title: 'Campaign Index', description: 'The 0-based index of this level in its campaign.', format: 'hidden'  # Automatically set by campaign editor.
+
+      scoreTypes: c.array {title: 'Score Types', description: 'What metric to show leaderboards for.', uniqueItems: true},
+        c.shortString(title: 'Score Type', 'enum': ['time', 'damage-taken', 'damage-dealt', 'gold-collected', 'difficulty'])  # TODO: good version of LoC; total gear value.
 
       tasks: c.array {title: 'Tasks', description: 'Tasks to be completed for this level.'}, c.task
+      concepts: c.array {title: 'Programming Concepts', description: 'Which programming concepts this level covers.'}, c.concept
+      picoCTFProblem: { type: 'string', description: 'Associated picoCTF problem ID, if this is a picoCTF level' }
 
       #- normal properties
       position: c.point2d()

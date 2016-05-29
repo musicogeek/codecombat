@@ -49,8 +49,15 @@ module.exports.loginUser = (userObject, failure=genericFailure, nextURL=null) ->
   jqxhr.fail(failure)
 
 module.exports.logoutUser = ->
+  # TODO: Refactor to use User.logout
   FB?.logout?()
-  res = $.post('/auth/logout', {}, -> window.location.reload())
+  callback = ->
+    location = _.result(currentView, 'logoutRedirectURL')
+    if location
+      window.location = location
+    else
+      window.location.reload()
+  res = $.post('/auth/logout', {}, callback)
   res.fail(genericFailure)
 
 onSetVolume = (e) ->

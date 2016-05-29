@@ -11,6 +11,7 @@ RelatedAchievementsCollection = require 'collections/RelatedAchievementsCollecti
 CampaignAnalyticsModal = require './CampaignAnalyticsModal'
 CampaignLevelView = require './CampaignLevelView'
 SaveCampaignModal = require './SaveCampaignModal'
+PatchesView = require 'views/editor/PatchesView'
 
 achievementProject = ['related', 'rewards', 'name', 'slug']
 thangTypeProject = ['name', 'original']
@@ -23,6 +24,7 @@ module.exports = class CampaignEditorView extends RootView
   events:
     'click #analytics-button': 'onClickAnalyticsButton'
     'click #save-button': 'onClickSaveButton'
+    'click #patches-button': 'onClickPatches'
 
   subscriptions:
     'editor:campaign-analytics-modal-closed' : 'onAnalyticsModalClosed'
@@ -30,7 +32,10 @@ module.exports = class CampaignEditorView extends RootView
   constructor: (options, @campaignHandle) ->
     super(options)
     @campaign = new Campaign({_id:@campaignHandle})
-    @supermodel.loadModel(@campaign, 'campaign')
+    @supermodel.loadModel(@campaign)
+    @listenToOnce @campaign, 'sync', (model, response, jqXHR) ->
+      @campaign.set '_id', response._id
+      @campaign.url = -> '/db/campaign/' + @id
 
     # Save reference to data used by anlytics modal so it persists across modal open/closes.
     @campaignAnalytics = {}
@@ -67,7 +72,7 @@ module.exports = class CampaignEditorView extends RootView
       thangType = new ThangType()
       thangType.setProjection(thangTypeProject)
       thangType.setURL("/db/thang.type/#{original}/version")
-      @supermodel.loadModel(thangType, 'thang')
+      @supermodel.loadModel(thangType)
 
   onFundamentalLoaded: ->
     # Load any levels which haven't been denormalized into our campaign.
@@ -77,7 +82,7 @@ module.exports = class CampaignEditorView extends RootView
       model = new Level({})
       model.setProjection Campaign.denormalizedLevelProperties
       model.setURL("/db/level/#{level.original}/version")
-      @levels.add @supermodel.loadModel(model, 'level').model
+      @levels.add @supermodel.loadModel(model).model
       achievements = new RelatedAchievementsCollection level.original
       achievements.setProjection achievementProject
       @supermodel.loadCollection achievements, 'achievements'
@@ -87,7 +92,7 @@ module.exports = class CampaignEditorView extends RootView
   onLoaded: ->
     @toSave.add @campaign if @campaign.hasLocalChanges()
     campaignLevels = $.extend({}, @campaign.get('levels'))
-    for level in @levels.models
+    for level, levelIndex in @levels.models
       levelOriginal = level.get('original')
       campaignLevel = campaignLevels[levelOriginal]
       continue if not campaignLevel
@@ -104,30 +109,34 @@ module.exports = class CampaignEditorView extends RootView
               rewardObject.hero = reward
               thangType = new ThangType({}, {project: thangTypeProject})
               thangType.setURL("/db/thang.type/#{reward}/version")
-              @supermodel.loadModel(thangType, 'thang')
+              @supermodel.loadModel(thangType)
 
             if rewardType is 'levels'
               rewardObject.level = reward
               if not @levels.findWhere({original: reward})
                 level = new Level({}, {project: Campaign.denormalizedLevelProperties})
                 level.setURL("/db/level/#{reward}/version")
-                @supermodel.loadModel(level, 'level')
+                @supermodel.loadModel(level)
 
             if rewardType is 'items'
               rewardObject.item = reward
               thangType = new ThangType({}, {project: thangTypeProject})
               thangType.setURL("/db/thang.type/#{reward}/version")
-              @supermodel.loadModel(thangType, 'thang')
+              @supermodel.loadModel(thangType)
 
             rewards.push rewardObject
       campaignLevel.rewards = rewards
       delete campaignLevel.unlocks
-      campaignLevel.campaign = @campaign.get 'slug'
+      # Save campaign to level, unless it's a course campaign, since we reuse hero levels for course levels.
+      campaignLevel.campaign = @campaign.get 'slug' if @campaign.get('type', true) isnt 'course'
+      # Save campaign index to level if it's a course campaign, since we show linear level order numbers for course levels.
+      campaignLevel.campaignIndex = (@levels.models.length - levelIndex - 1) if @campaign.get('type', true) is 'course'
       campaignLevels[levelOriginal] = campaignLevel
 
     @campaign.set('levels', campaignLevels)
 
     for level in _.values campaignLevels
+      continue if /test/.test @campaign.get('slug')  # Don't overwrite level stuff for testing Campaigns
       model = @levels.findWhere {original: level.original}
       model.set key, level[key] for key in Campaign.denormalizedLevelProperties
       @toSave.add model if model.hasLocalChanges()
@@ -135,10 +144,10 @@ module.exports = class CampaignEditorView extends RootView
 
     super()
 
-  getRenderData: ->
-    c = super()
-    c.campaign = @campaign
-    c
+  onClickPatches: (e) ->
+    @patchesView = @insertSubView(new PatchesView(@campaign), @$el.find('.patches-view'))
+    @patchesView.load()
+    @patchesView.$el.removeClass 'hidden'
 
   onClickAnalyticsButton: ->
     @openModalView new CampaignAnalyticsModal {}, @campaignHandle, @campaignAnalytics
@@ -183,21 +192,27 @@ module.exports = class CampaignEditorView extends RootView
     @listenTo @campaignView, 'adjacent-campaign-moved', @onAdjacentCampaignMoved
     @listenTo @campaignView, 'level-clicked', @onCampaignLevelClicked
     @listenTo @campaignView, 'level-double-clicked', @onCampaignLevelDoubleClicked
+    @listenTo @campaign, 'change:i18n', =>
+      @campaign.updateI18NCoverage()
+      @treema.set('/i18n', @campaign.get('i18n'))
+      @treema.set('/i18nCoverage', @campaign.get('i18nCoverage'))
+
     @insertSubView @campaignView
 
   onTreemaChanged: (e, nodes) =>
-    for node in nodes
-      path = node.getPath()
-      if _.string.startsWith path, '/levels/'
-        parts = path.split('/')
-        original = parts[2]
-        level = @supermodel.getModelByOriginal Level, original
-        campaignLevel = @treema.get "/levels/#{original}"
+    unless /test/.test @campaign.get('slug')  # Don't overwrite level stuff for testing Campaigns
+      for node in nodes
+        path = node.getPath()
+        if _.string.startsWith path, '/levels/'
+          parts = path.split('/')
+          original = parts[2]
+          level = @supermodel.getModelByOriginal Level, original
+          campaignLevel = @treema.get "/levels/#{original}"
 
-        @updateRewardsForLevel level, campaignLevel.rewards
+          @updateRewardsForLevel level, campaignLevel.rewards
 
-        level.set key, campaignLevel[key] for key in Campaign.denormalizedLevelProperties
-        @toSave.add level if level.hasLocalChanges()
+          level.set key, campaignLevel[key] for key in Campaign.denormalizedLevelProperties
+          @toSave.add level if level.hasLocalChanges()
 
     @toSave.add @campaign
     @campaign.set key, value for key, value of @treema.data
@@ -234,6 +249,7 @@ module.exports = class CampaignEditorView extends RootView
     @$el.find('#campaign-view').hide()
 
   updateRewardsForLevel: (level, rewards) ->
+    return  # Don't risk destruction of level unlock links
     achievements = @supermodel.getModels(Achievement)
     achievements = (a for a in achievements when a.get('related') is level.get('original'))
     for achievement in achievements
@@ -255,10 +271,18 @@ module.exports = class CampaignEditorView extends RootView
       if achievement.hasLocalChanges()
         @toSave.add achievement
 
+  onClickLoginButton: ->
+    # Do Nothing
+    # This is a override method to RootView, so that only CampaignView is listenting to login button click
+
+  onClickSignupButton: ->
+    # Do Nothing
+    # This is a override method to RootView, so that only CampaignView is listenting to signup button click
 
 class LevelsNode extends TreemaObjectNode
   valueClass: 'treema-levels'
   @levels: {}
+  ordered: true
 
   buildValueForDisplay: (valEl, data) ->
     @buildValueForDisplaySimply valEl, ''+_.size(data)
@@ -306,6 +330,7 @@ class LevelNode extends TreemaObjectNode
   populateData: ->
     return if @data.name?
     data = _.pick LevelsNode.levels[@keyForParent].attributes, Campaign.denormalizedLevelProperties
+    console.log 'got the data', data
     _.extend @data, data
 
 class CampaignsNode extends TreemaObjectNode

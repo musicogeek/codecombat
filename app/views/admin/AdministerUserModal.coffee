@@ -1,18 +1,19 @@
 ModalView = require 'views/core/ModalView'
 template = require 'templates/admin/administer-user-modal'
 User = require 'models/User'
+Prepaid = require 'models/Prepaid'
 
 module.exports = class AdministerUserModal extends ModalView
   id: "administer-user-modal"
   template: template
-  plain: true
 
   events:
     'click #save-changes': 'onSaveChanges'
+    'click #add-seats-btn': 'onClickAddSeatsButton'
 
   constructor: (options, @userHandle) ->
     super(options)
-    @user = @supermodel.loadModel(new User({_id:@userHandle}), 'user', {cache: false}).model
+    @user = @supermodel.loadModel(new User({_id:@userHandle}), {cache: false}).model
     options = {cache: false, url: '/stripe/coupons'}
     options.success = (@coupons) =>
     @couponsResource = @supermodel.addRequestResource('coupon', options)
@@ -58,3 +59,20 @@ module.exports = class AdministerUserModal extends ModalView
     options = {}
     options.success = => @hide()
     @user.patch(options)
+
+  onClickAddSeatsButton: ->
+    maxRedeemers = parseInt(@$('#seats-input').val())
+    return unless maxRedeemers and maxRedeemers > 0
+    prepaid = new Prepaid({
+      maxRedeemers: maxRedeemers
+      type: 'course'
+      creator: @user.id
+      properties:
+        adminAdded: me.id
+    })
+    prepaid.save()
+    @state = 'creating-prepaid'
+    @renderSelectors('#prepaid-form')
+    @listenTo prepaid, 'sync', ->
+      @state = 'made-prepaid'
+      @renderSelectors('#prepaid-form')

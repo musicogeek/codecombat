@@ -18,7 +18,8 @@ ctrlDefaultPrevented = [219, 221, 80, 83]
 preventBackspace = (event) ->
   if event.keyCode is 8 and not elementAcceptsKeystrokes(event.srcElement or event.target)
     event.preventDefault()
-  else if (key.ctrl or key.command) and not key.alt and event.keyCode in ctrlDefaultPrevented
+  else if (event.ctrlKey or event.metaKey) and not event.altKey and event.keyCode in ctrlDefaultPrevented
+    console.debug "Prevented keystroke", key, event
     event.preventDefault()
 
 elementAcceptsKeystrokes = (el) ->
@@ -45,9 +46,12 @@ console.debug ?= console.log  # Needed for IE10 and earlier
 
 Application = initialize: ->
   Router = require('core/Router')
-  @isProduction = -> document.location.href.search('codecombat.com') isnt -1
-  @isIPadApp = webkit?.messageHandlers? and navigator.userAgent?.indexOf('iPad') isnt -1
+  @isProduction = -> document.location.href.search('https?://localhost') is -1
+  @isIPadApp = webkit?.messageHandlers? and navigator.userAgent?.indexOf('CodeCombat-iPad') isnt -1
   $('body').addClass 'ipad' if @isIPadApp
+  $('body').addClass 'picoctf' if window.serverConfig.picoCTF
+  if $.browser.msie and parseInt($.browser.version) is 10
+    $("html").addClass("ie10")
   @tracker = new Tracker()
   @facebookHandler = new FacebookHandler()
   @gplusHandler = new GPlusHandler()
@@ -61,6 +65,7 @@ Application = initialize: ->
     lng: me.get('preferredLanguage', true)
     fallbackLng: 'en'
     resStore: locale
+    useDataAttrOptions: true
     #debug: true
     #sendMissing: true
     #sendMissingTo: 'current'

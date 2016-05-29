@@ -4,43 +4,49 @@ ThangComponentSchema = require './thang_component'
 defaultTasks = [
   'Name the level.'
   'Create a Referee stub, if needed.'
+  'Do basic set decoration.'
+  'Publish.'
+
   'Build the level.'
   'Set up goals.'
+  'Write the sample code.'
+  'Make sure the level ends promptly on success and failure.'
+
   'Choose the Existence System lifespan and frame rate.'
   'Choose the UI System paths and coordinate hover if needed.'
   'Choose the AI System pathfinding and Vision System line of sight.'
-  'Write the sample code.'
 
-  'Do basic set decoration.'
   'Adjust script camera bounds.'
   'Choose music file in Introduction script.'
+  'Choose autoplay in Introduction script.'
 
-  'Add to a campaign.'
-  'Publish.'
-  'Choose level options like required/restricted gear.'
-  'Create achievements, including unlocking next level.'
+  'Add Clojure/Lua/CoffeeScript.'
+
+  'Write the description.'
+  'Write the guide.'
+
+  'Write a loading tip, if needed.'
+  'Add programming concepts covered.'
+  'Mark whether it requires a subscription.'
   'Choose leaderboard score types.'
 
+  'Do thorough set decoration.'
   'Playtest with a slow/tough hero.'
   'Playtest with a fast/weak hero.'
   'Playtest with a couple random seeds.'
-  'Make sure the level ends promptly on success and failure.'
   'Remove/simplify unnecessary doodad collision.'
+
+  'Add to a campaign.'
+  'Choose level options like required/restricted gear.'
+  'Create achievements, including unlocking next level.'
+
+  'Click the Populate i18n button.'
+  'Add i18n field for the sample code comments.'
   'Release to adventurers via MailChimp.'
 
-  'Write the description.'
-  'Translate the sample code comments.'
-  'Add Io/Clojure/Lua/CoffeeScript.'
-  'Write the guide.'
-  'Write a loading tip, if needed.'
-  'Click the Populate i18n button.'
-
-  'Mark whether it requires a subscription.'
   'Release to everyone via MailChimp.'
 
   'Check completion/engagement/problem analytics.'
-  'Do any custom scripting, if needed.'
-  'Do thorough set decoration.'
   'Add a walkthrough video.'
 ]
 
@@ -77,7 +83,7 @@ GoalSchema = c.object {title: 'Goal', description: 'A goal that the player can a
   optional: {title: 'Optional', description: 'Optional goals do not need to be completed for overallStatus to be success.', type: 'boolean'}
   team: c.shortString(title: 'Team', description: 'Name of the team this goal is for, if it is not for all of the playable teams.')
   killThangs: c.array {title: 'Kill Thangs', description: 'A list of Thang IDs the player should kill, or team names.', uniqueItems: true, minItems: 1, 'default': ['ogres']}, thang
-  saveThangs: c.array {title: 'Save Thangs', description: 'A list of Thang IDs the player should save, or team names', uniqueItems: true, minItems: 1, 'default': ['humans']}, thang
+  saveThangs: c.array {title: 'Save Thangs', description: 'A list of Thang IDs the player should save, or team names', uniqueItems: true, minItems: 1, 'default': ['Hero Placeholder']}, thang
   getToLocations: c.object {title: 'Get To Locations', description: 'Will be set off when any of the \"who\" touch any of the \"targets\"', required: ['who', 'targets']},
     who: c.array {title: 'Who', description: 'The Thangs who must get to the target locations.', minItems: 1}, thang
     targets: c.array {title: 'Targets', description: 'The target locations to which the Thangs must get.', minItems: 1}, thang
@@ -244,7 +250,7 @@ GeneralArticleSchema = c.object {
   links: [{rel: 'db', href: '/db/article/{(original)}/version/{(majorVersion)}'}]
 },
   original: c.objectId(title: 'Original', description: 'A reference to the original Article.')#, format: 'hidden')  # hidden?
-  majorVersion: {title: 'Major Version', description: 'Which major version of the Article is being used.', type: 'integer', minimum: 0}#, format: 'hidden'}  # hidden?
+  majorVersion: {title: 'Major Version', description: 'Which major version of the Article is being used.', type: 'integer', minimum: 0} #, format: 'hidden'}  # hidden?
 
 LevelSchema = c.object {
   title: 'Level'
@@ -253,6 +259,7 @@ LevelSchema = c.object {
   'default':
     name: 'Ineffable Wizardry'
     description: 'This level is indescribably flarmy.'
+    tasks: (name: t, complete: false for t in defaultTasks)
     documentation: {}
     scripts: []
     thangs: []
@@ -261,8 +268,9 @@ LevelSchema = c.object {
     type: 'hero'
     goals: [
       {id: 'ogres-die', name: 'Ogres must die.', killThangs: ['ogres'], worldEndsAfter: 3}
-      {id: 'humans-survive', name: 'Humans must survive.', saveThangs: ['humans'], howMany: 1, worldEndsAfter: 3, hiddenGoal: true}
+      {id: 'humans-survive', name: 'Your hero must survive.', saveThangs: ['Hero Placeholder'], howMany: 1, worldEndsAfter: 3, hiddenGoal: true}
     ]
+    concepts: ['basic_syntax']
 }
 c.extendNamedProperties LevelSchema  # let's have the name be the first property
 _.extend LevelSchema.properties,
@@ -291,7 +299,7 @@ _.extend LevelSchema.properties,
   icon: {type: 'string', format: 'image-file', title: 'Icon'}
   banner: {type: 'string', format: 'image-file', title: 'Banner'}
   goals: c.array {title: 'Goals', description: 'An array of goals which are visible to the player and can trigger scripts.'}, GoalSchema
-  type: c.shortString(title: 'Type', description: 'What kind of level this is.', 'enum': ['campaign', 'ladder', 'ladder-tutorial', 'hero', 'hero-ladder', 'hero-coop'])
+  type: c.shortString(title: 'Type', description: 'What kind of level this is.', 'enum': ['campaign', 'ladder', 'ladder-tutorial', 'hero', 'hero-ladder', 'hero-coop', 'course', 'course-ladder'])
   terrain: c.terrainString
   showsGuide: c.shortString(title: 'Shows Guide', description: 'If the guide is shown at the beginning of the level.', 'enum': ['first-time', 'always'])
   requiresSubscription: {title: 'Requires Subscription', description: 'Whether this level is available to subscribers only.', type: 'boolean'}
@@ -307,7 +315,7 @@ _.extend LevelSchema.properties,
   adventurer: { type: 'boolean' }
   practice: { type: 'boolean' }
   adminOnly: { type: 'boolean' }
-  disableSpaces: { type: 'boolean' }
+  disableSpaces: { type: ['boolean','integer'] }
   hidesSubmitUntilRun: { type: 'boolean' }
   hidesPlayButton: { type: 'boolean' }
   hidesRunShortcut: { type: 'boolean' }
@@ -316,7 +324,7 @@ _.extend LevelSchema.properties,
   hidesCodeToolbar: { type: 'boolean' }
   hidesRealTimePlayback: { type: 'boolean' }
   backspaceThrottle: { type: 'boolean' }
-  lockDefaultCode: { type: 'boolean' }
+  lockDefaultCode: { type: ['boolean','integer'] }
   moveRightLoopSnippet: { type: 'boolean' }
   realTimeSpeedFactor: { type: 'number' }
   autocompleteFontSizePx: { type: 'number' }
@@ -342,8 +350,11 @@ _.extend LevelSchema.properties,
     type: 'string', links: [{rel: 'db', href: '/db/thang.type/{($)}/version'}], format: 'latest-version-original-reference'
   }}
   campaign: c.shortString title: 'Campaign', description: 'Which campaign this level is part of (like "desert").', format: 'hidden'  # Automatically set by campaign editor.
+  campaignIndex: c.int title: 'Campaign Index', description: 'The 0-based index of this level in its campaign.', format: 'hidden'  # Automatically set by campaign editor.
   scoreTypes: c.array {title: 'Score Types', description: 'What metric to show leaderboards for.', uniqueItems: true},
      c.shortString(title: 'Score Type', 'enum': ['time', 'damage-taken', 'damage-dealt', 'gold-collected', 'difficulty'])  # TODO: good version of LoC; total gear value.
+  concepts: c.array {title: 'Programming Concepts', description: 'Which programming concepts this level covers.', uniqueItems: true}, c.concept
+  picoCTFProblem: { type: 'string', description: 'Associated picoCTF problem ID, if this is a picoCTF level' }
 
 
 c.extendBasicProperties LevelSchema, 'level'

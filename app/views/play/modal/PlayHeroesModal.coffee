@@ -7,7 +7,7 @@ SpriteBuilder = require 'lib/sprites/SpriteBuilder'
 AudioPlayer = require 'lib/AudioPlayer'
 utils = require 'core/utils'
 BuyGemsModal = require 'views/play/modal/BuyGemsModal'
-AuthModal = require 'views/core/AuthModal'
+CreateAccountModal = require 'views/core/CreateAccountModal'
 Purchase = require 'models/Purchase'
 LayerAdapter = require 'lib/surface/LayerAdapter'
 Lank = require 'lib/surface/Lank'
@@ -78,6 +78,7 @@ module.exports = class PlayHeroesModal extends ModalView
   afterRender: ->
     super()
     return unless @supermodel.finished()
+    @playSound 'game-menu-open'
     @$el.find('.hero-avatar').addClass 'ie' if @isIE()
     heroes = @heroes.models
     @$el.find('.hero-indicator').each ->
@@ -109,11 +110,12 @@ module.exports = class PlayHeroesModal extends ModalView
       @codeLanguageList = [
         {id: 'python', name: "Python (#{$.i18n.t('choose_hero.default')})"}
         {id: 'javascript', name: 'JavaScript'}
-        {id: 'coffeescript', name: 'CoffeeScript'}
-        {id: 'clojure', name: "Clojure (#{$.i18n.t('choose_hero.experimental')})"}
-        {id: 'lua', name: "Lua (#{$.i18n.t('choose_hero.experimental')})"}
-        {id: 'io', name: "Io (#{$.i18n.t('choose_hero.experimental')})"}
+        {id: 'coffeescript', name: "CoffeeScript (#{$.i18n.t('choose_hero.experimental')})"}
+        {id: 'lua', name: 'Lua'}
       ]
+
+      if me.isAdmin() or not application.isProduction()
+        @codeLanguageList.push {id: 'java', name: "Java (#{$.i18n.t('choose_hero.experimental')})"}
 
   onHeroChanged: (e) ->
     direction = e.direction  # 'left' or 'right'
@@ -135,7 +137,7 @@ module.exports = class PlayHeroesModal extends ModalView
       return fullHero
     fullHero = new ThangType()
     fullHero.setURL url
-    fullHero = (@supermodel.loadModel fullHero, 'thang').model
+    fullHero = (@supermodel.loadModel fullHero).model
     fullHero
 
   preloadHero: (heroIndex) ->
@@ -172,13 +174,14 @@ module.exports = class PlayHeroesModal extends ModalView
       layer.on 'new-spritesheet', ->
         #- maybe put some more normalization here?
         m = multiplier
-        m *= 0.75 if fullHero.get('slug') in ['knight', 'samurai', 'librarian', 'sorcerer'] # these heroes are larger for some reason, shrink 'em
+        m *= 0.75 if fullHero.get('slug') in ['knight', 'samurai', 'librarian', 'sorcerer', 'necromancer']  # These heroes are larger for some reason. Shrink 'em.
+        m *= 0.4 if fullHero.get('slug') is 'goliath'  # Just too big!
         layer.container.scaleX = layer.container.scaleY = m
         layer.container.children[0].x = 160/m
         layer.container.children[0].y = 250/m
-        if fullHero.get('slug') in ['forest-archer', 'librarian', 'sorcerer', 'potion-master']
+        if fullHero.get('slug') in ['forest-archer', 'librarian', 'sorcerer', 'potion-master', 'necromancer']
           layer.container.children[0].y -= 3
-        if fullHero.get('slug') in ['librarian', 'sorcerer', 'potion-master']
+        if fullHero.get('slug') in ['librarian', 'sorcerer', 'potion-master', 'necromancer', 'goliath']
           layer.container.children[0].x -= 3
 
       stage = new createjs.SpriteStage(canvas[0])
@@ -260,14 +263,10 @@ module.exports = class PlayHeroesModal extends ModalView
         button.removeClass('confirm').text($.i18n.t('play.unlock')) if e.target isnt button[0]
 
   askToSignUp: ->
-    authModal = new AuthModal supermodel: @supermodel
-    authModal.mode = 'signup'
-    return @openModalView authModal
+    createAccountModal = new CreateAccountModal supermodel: @supermodel
+    return @openModalView createAccountModal
 
   askToBuyGems: (unlockButton) ->
-    if me.getGemPromptGroup() is 'no-prompt'
-      return @askToSignUp() if me.get('anonymous')
-      return @openModalView new BuyGemsModal()
     @$el.find('.unlock-button').popover 'destroy'
     popoverTemplate = buyGemsPromptTemplate {}
     unlockButton.popover(
@@ -282,7 +281,6 @@ module.exports = class PlayHeroesModal extends ModalView
     popover?.$tip?.i18n()
 
   onBuyGemsPromptButtonClicked: (e) ->
-    @playSound 'menu-button-click'
     return @askToSignUp() if me.get('anonymous')
     @openModalView new BuyGemsModal()
 
@@ -295,8 +293,16 @@ module.exports = class PlayHeroesModal extends ModalView
 
   saveAndHide: ->
     hero = @selectedHero?.get('original')
+    hero ?= @visibleHero?.get('original') if @visibleHero?.loaded and not @visibleHero.locked
     unless hero
       console.error 'Somehow we tried to hide without having a hero selected yet...'
+      noty {
+        text: "Error: hero not loaded. If this keeps happening, please report the bug."
+        layout: 'topCenter'
+        timeout: 10000
+        type: 'error'
+      }
+      return
 
     if @session
       changed = @updateHeroConfig(@session, hero)
@@ -329,7 +335,7 @@ module.exports = class PlayHeroesModal extends ModalView
 
   onHidden: ->
     super()
-    Backbone.Mediator.publish 'audio-player:play-sound', trigger: 'game-menu-close', volume: 1
+    @playSound 'game-menu-close'
 
   destroy: ->
     clearInterval @heroAnimationInterval

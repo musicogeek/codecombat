@@ -171,3 +171,7 @@ module.exports =
     hero: {type: 'object'}
 
   'level:subscription-required': c.object {}
+
+  'level:course-membership-required': c.object {}
+
+  'level:contact-button-pressed': c.object {title: 'Contact Pressed', description: 'Dispatched when the contact button is pressed in a level.'}

@@ -61,7 +61,7 @@ module.exports = Lank = class Lank extends CocoClass
   constructor: (@thangType, options) ->
     super()
     spriteName = @thangType.get('name')
-    @isMissile = /(Missile|Arrow|Spear)/.test(spriteName) and not /(Tower|Charge)/.test(spriteName)
+    @isMissile = /(Missile|Arrow|Spear|Bolt)/.test(spriteName) and not /(Tower|Charge)/.test(spriteName)
     @options = _.extend($.extend(true, {}, @options), options)
     @setThang @options.thang
     if @thang?
@@ -103,6 +103,7 @@ module.exports = Lank = class Lank extends CocoClass
 
   setSprite: (newSprite) ->
     if @sprite
+      @sprite.off 'animationend', @playNextAction
       @sprite.destroy?()
       if parent = @sprite.parent
         parent.removeChild @sprite
@@ -140,6 +141,7 @@ module.exports = Lank = class Lank extends CocoClass
   onSurfaceTicked: (e) -> @age += e.dt
 
   playNextAction: =>
+    return if @destroyed
     @playAction(@actionQueue.splice(0, 1)[0]) if @actionQueue.length
 
   playAction: (action) ->
@@ -682,7 +684,10 @@ module.exports = Lank = class Lank extends CocoClass
     return unless @thang
     blurb = if @thang.health <= 0 then null else @thang.sayMessage  # Dead men tell no tales
     blurb = null if blurb in ['For Thoktar!', 'Bones!', 'Behead!', 'Destroy!', 'Die, humans!']  # Let's just hear, not see, these ones.
-    labelStyle = if /Hero Placeholder/.test(@thang.id) then Label.STYLE_DIALOGUE else Label.STYLE_SAY
+    if /Hero Placeholder/.test(@thang.id)
+      labelStyle = Label.STYLE_DIALOGUE
+    else
+      labelStyle = @thang.labelStyle ? Label.STYLE_SAY
     @addLabel 'say', labelStyle if blurb
     if @labels.say?.setText blurb
       @notifySpeechUpdated blurb: blurb

@@ -35,9 +35,9 @@ init = ->
   path = document.location.pathname
   app.testing = _.string.startsWith path, '/test'
   app.demoing = _.string.startsWith path, '/demo'
-  initializeUtilityServices() unless app.testing or app.demoing
   setUpBackboneMediator()
   app.initialize()
+  loadOfflineFonts() unless app.isProduction()
   Backbone.history.start({ pushState: true })
   handleNormalUrls()
   setUpMoment() # Set up i18n for moment
@@ -69,22 +69,17 @@ setUpBackboneMediator = ->
   Backbone.Mediator.addDefSchemas schemas for definition, schemas of definitionSchemas
   Backbone.Mediator.addChannelSchemas schemas for channel, schemas of channelSchemas
   Backbone.Mediator.setValidationEnabled document.location.href.search(/codecombat.com/) is -1
-  if webkit?.messageHandlers
-    window.iPadSubscriptions = 'application:error': true  # We try to subscribe to this one before it's all set up, so just do it.
+  if false  # Debug which events are being fired
     originalPublish = Backbone.Mediator.publish
     Backbone.Mediator.publish = ->
+      console.log 'Publishing event:', arguments... unless /(tick|frame-changed)/.test(arguments[0])
       originalPublish.apply Backbone.Mediator, arguments
-      if window.iPadSubscriptions[arguments[0]]
-        webkit.messageHandlers.backboneEventHandler?.postMessage channel: arguments[0], event: serializeForIOS(arguments[1] ? {})
 
 setUpMoment = ->
   {me} = require 'core/auth'
   moment.lang me.get('preferredLanguage', true), {}
   me.on 'change:preferredLanguage', (me) ->
     moment.lang me.get('preferredLanguage', true), {}
-
-initializeUtilityServices = ->
-  require('core/services/segmentio')()
 
 setupConsoleLogging = ->
   # IE9 doesn't expose console object unless debugger tools are loaded
@@ -131,6 +126,10 @@ setUpIOSLogging = ->
         catch e
           webkit?.messageHandlers?.consoleLogHandler?.postMessage level: level, arguments: ['could not post log: ' + e]
 
+loadOfflineFonts = ->
+  $('head').prepend '<link rel="stylesheet" type="text/css" href="/fonts/openSansCondensed.css">'
+  $('head').prepend '<link rel="stylesheet" type="text/css" href="/fonts/openSans.css">'
+
 # This is so hacky... hopefully it's restrictive enough to not be slow.
 # We could also keep a list of events we are actually subscribed for and only try to send those over.
 seen = null
@@ -160,4 +159,11 @@ window.serializeForIOS = serializeForIOS = (obj, depth=3) ->
   seen = null if root
   clone
 
+window.onbeforeunload = (e) ->
+  leavingMessage = _.result(window.currentView, 'onLeaveMessage')
+  if leavingMessage
+    return leavingMessage
+  else
+    return
+  
 $ -> init()

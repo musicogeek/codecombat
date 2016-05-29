@@ -30,6 +30,9 @@ module.exports.normalizeFunc = (func_thing, object) ->
     func_thing = func
   return func_thing
 
+module.exports.objectIdToDate = (objectID) ->
+  new Date(parseInt(objectID.toString().slice(0,8), 16)*1000)
+
 module.exports.hexToHSL = (hex) ->
   rgbToHsl(hexToR(hex), hexToG(hex), hexToB(hex))
 
@@ -48,8 +51,9 @@ toHex = (n) ->
 
 module.exports.i18n = (say, target, language=me.get('preferredLanguage', true), fallback='en') ->
   generalResult = null
-  fallbackResult = null
-  fallforwardResult = null # If a general language isn't available, the first specific one will do
+  fallBackResult = null
+  fallForwardResult = null  # If a general language isn't available, the first specific one will do.
+  fallSidewaysResult = null  # If a specific language isn't available, its sibling specific language will do.
   matches = (/\w+/gi).exec(language)
   generalName = matches[0] if matches
 
@@ -60,12 +64,14 @@ module.exports.i18n = (say, target, language=me.get('preferredLanguage', true), 
     else continue
     return result if localeName is language
     generalResult = result if localeName is generalName
-    fallbackResult = result if localeName is fallback
-    fallforwardResult = result if localeName.indexOf(language) is 0 and not fallforwardResult?
+    fallBackResult = result if localeName is fallback
+    fallForwardResult = result if localeName.indexOf(language) is 0 and not fallForwardResult?
+    fallSidewaysResult = result if localeName.indexOf(generalName) is 0 and not fallSidewaysResult?
 
   return generalResult if generalResult?
-  return fallforwardResult if fallforwardResult?
-  return fallbackResult if fallbackResult?
+  return fallForwardResult if fallForwardResult?
+  return fallSidewaysResult if fallSidewaysResult?
+  return fallBackResult if fallBackResult?
   return say[target] if target of say
   null
 
@@ -177,3 +183,124 @@ if document?.createElement
       wrap.appendChild temp.children[1]
       return
   )(document)
+
+module.exports.getQueryVariable = getQueryVariable = (param, defaultValue) ->
+  query = document.location.search.substring 1
+  pairs = (pair.split('=') for pair in query.split '&')
+  for pair in pairs when pair[0] is param
+    return {'true': true, 'false': false}[pair[1]] ? decodeURIComponent(pair[1])
+  defaultValue
+
+module.exports.getSponsoredSubsAmount = getSponsoredSubsAmount = (price=999, subCount=0, personalSub=false) ->
+  # 1 100%
+  # 2-11 80%
+  # 12+ 60%
+  # TODO: make this less confusing
+  return 0 unless subCount > 0
+  offset = if personalSub then 1 else 0
+  if subCount <= 1 - offset
+    price
+  else if subCount <= 11 - offset
+    Math.round((1 - offset) * price + (subCount - 1 + offset) * price * 0.8)
+  else
+    Math.round((1 - offset) * price + 10 * price * 0.8 + (subCount - 11 + offset) * price * 0.6)
+
+module.exports.getCourseBundlePrice = getCourseBundlePrice = (coursePrices, seats=20) ->
+  totalPricePerSeat = coursePrices.reduce ((a, b) -> a + b), 0
+  if coursePrices.length > 2
+    pricePerSeat = Math.round(totalPricePerSeat / 2.0)
+  else
+    pricePerSeat = parseInt(totalPricePerSeat)
+  seats * pricePerSeat
+
+module.exports.getCoursePraise = getCoursePraise = ->
+  praise = [
+    {
+      quote:  "The kids love it."
+      source: "Leo Joseph Tran, Athlos Leadership Academy"
+    },
+    {
+      quote: "My students have been using the site for a couple of weeks and they love it."
+      source: "Scott Hatfield, Computer Applications Teacher, School Technology Coordinator, Eastside Middle School"
+    },
+    {
+      quote: "Thanks for the captivating site. My eighth graders love it."
+      source: "Janet Cook, Ansbach Middle/High School"
+    },
+    {
+      quote: "My students have started working on CodeCombat and love it! I love that they are learning coding and problem solving skills without them even knowing it!!"
+      source: "Kristin Huff, Special Education Teacher, Webb City School District"
+    },
+    {
+      quote: "I recently introduced Code Combat to a few of my fifth graders and they are loving it!"
+      source: "Shauna Hamman, Fifth Grade Teacher, Four Peaks Elementary School"
+    },
+    {
+      quote: "Overall I think it's a fantastic service. Variables, arrays, loops, all covered in very fun and imaginative ways. Every kid who has tried it is a fan."
+      source: "Aibinder Andrew, Technology Teacher"
+    },
+    {
+      quote: "I love what you have created. The kids are so engaged."
+      source: "Desmond Smith, 4KS Academy"
+    },
+    {
+      quote: "My students love the website and I hope on having content structured around it in the near future."
+      source: "Michael Leonard, Science Teacher, Clearwater Central Catholic High School"
+    }
+  ]
+  praise[_.random(0, praise.length - 1)]
+
+module.exports.getPrepaidCodeAmount = getPrepaidCodeAmount = (price=0, users=0, months=0) ->
+  return 0 unless users > 0 and months > 0
+  total = price * users * months
+  total
+
+module.exports.filterMarkdownCodeLanguages = (text, language) ->
+  return '' unless text
+  currentLanguage = language or me.get('aceConfig')?.language or 'python'
+  excludedLanguages = _.without ['javascript', 'python', 'coffeescript', 'clojure', 'lua', 'java', 'io'], currentLanguage
+  exclusionRegex = new RegExp "```(#{excludedLanguages.join('|')})\n[^`]+```\n?", 'gm'
+  text.replace exclusionRegex, ''
+
+module.exports.aceEditModes = aceEditModes =
+  'javascript': 'ace/mode/javascript'
+  'coffeescript': 'ace/mode/coffee'
+  'python': 'ace/mode/python'
+  'java': 'ace/mode/java'
+  'clojure': 'ace/mode/clojure'
+  'lua': 'ace/mode/lua'
+  'io': 'ace/mode/text'
+  'java': 'ace/mode/java'
+
+module.exports.initializeACE = (el, codeLanguage) ->
+  contents = $(el).text().trim()
+  editor = ace.edit el
+  editor.setOptions maxLines: Infinity
+  editor.setReadOnly true
+  editor.setTheme 'ace/theme/textmate'
+  editor.setShowPrintMargin false
+  editor.setShowFoldWidgets false
+  editor.setHighlightActiveLine false
+  editor.setHighlightActiveLine false
+  editor.setBehavioursEnabled false
+  editor.renderer.setShowGutter false
+  editor.setValue contents
+  editor.clearSelection()
+  session = editor.getSession()
+  session.setUseWorker false
+  session.setMode aceEditModes[codeLanguage]
+  session.setWrapLimitRange null
+  session.setUseWrapMode true
+  session.setNewLineMode 'unix'
+  return editor
+
+module.exports.capitalLanguages = capitalLanguages = 
+  'javascript': 'JavaScript'
+  'coffeescript': 'CoffeeScript'
+  'python': 'Python'
+  'java': 'Java'
+  'clojure': 'Clojure'
+  'lua': 'Lua'
+  'io': 'Io'
+
+  
